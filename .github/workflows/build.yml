@@ -55,7 +55,7 @@ jobs:
       - name: Generate metadata (tags, labels) for Docker
         id: meta
         if: github.event_name == 'push'
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.REGISTRY || vars.REGISTRY || 'ghcr.io' }}/${{ secrets.NAMESPACE || vars.NAMESPACE || github.actor }}/gitea-actions-cache-serer
           flavor: |
