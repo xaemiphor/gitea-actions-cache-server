@@ -16,25 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+        # Extract go version
+      - name: vars
+        id: vars
+        run: |
+          GO_VERSION=$(awk '/^go/{print $NF}' go.mod)
+          echo "GO_VERSION=${GO_VERSION}" | tee -a ${GITHUB_OUTPUT}
+
+        # Run go tests
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
 
-      - name: Build
-        run: |
-          mkdir dist
-          go build -trimpath -ldflags="-s -w" -v -o dist/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          path: dist/
-          retention-days: 1
-
-      - name: Test
+      - name: Go Test
         run: go test -v ./...
 
+        # Prep docker
       - name: Set up QEMU
         if: github.event_name == 'push'
         uses: docker/setup-qemu-action@v3
@@ -49,6 +47,7 @@ jobs:
           username: ${{ secrets.DOCKER_USER || github.actor }}
           password: ${{ secrets.DOCKER_PASSWORD || secrets.GITHUB_TOKEN }}
 
+        # Prep meta
       - name: Generate metadata (tags, labels) for Docker
         id: meta
         if: github.event_name == 'push'
@@ -56,12 +55,41 @@ jobs:
         with:
           images: ${{ secrets.REGISTRY || vars.REGISTRY || 'ghcr.io' }}/${{ secrets.NAMESPACE || vars.NAMESPACE || github.actor }}/gitea-actions-cache-server
           flavor: |
-            latest=true
+            latest=${{ github.event_name == 'release' && github.event.action == 'created' }}
           tags: |
             type=ref,event=branch
             type=sha
 
-      - name: Build and push Docker image
+        # Build docker
+      - name: Build Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          push: false
+          platforms: 'linux/amd64'
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args:
+            GO_VERSION=${{ steps.vars.outputs.GO_VERSION }}
+
+      - name: Extract binary
+        shell: bash
+        run: |
+          mkdir dist
+          container_id=$(docker create "${{ steps.build.outputs.imageid }}")
+          docker cp "$container_id:/gitea-actions-cache-server" "dist"
+          docker rm "$container_id"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: dist/
+          retention-days: 1
+
+      - name: Push Docker image
         uses: docker/build-push-action@v5
         if: github.event_name == 'push'
         with:
@@ -71,4 +99,5 @@ jobs:
           platforms: 'linux/amd64'
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
+          build-args:
+            GO_VERSION=${{ steps.vars.outputs.GO_VERSION }}
