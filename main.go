@@ -1,11 +1,12 @@
 package main
 
 import (
+	"encoding/base32"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"os"
-	"errors"
 )
 
 func getEnv(key, fallback string) string {
@@ -15,12 +16,45 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func cacheFilename(key string, version string) string {
-	return key + "-" + version
+func encodePayloadId(key string, version string) string {
+	payload := []byte(key + "|" + version)
+	return base32.StdEncoding.EncodeToString(payload)
+}
+
+func decodePayloadId(source string) string {
+	data, err := base32.StdEncoding.DecodeString(source)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+	return string(data)
+}
+
+func logPayload(c *gin.Context) {
+	// Extract request information
+	requestURI := c.Request.RequestURI
+	requestMethod := c.Request.Method
+	headerData := c.Request.Header
+	queryParams := c.Request.URL.Query()
+	postData, _ := c.GetRawData() // Assumes POST data is JSON
+
+	// Construct JSON payload
+	payload := gin.H{
+		"requestURI":    requestURI,
+		"requestMethod": requestMethod,
+		"headerData":    headerData,
+		"queryParams":   queryParams,
+		"postData":      string(postData),
+	}
+	payloadJson, _ := json.Marshal(payload)
+	fmt.Println(string(payloadJson))
+
+	c.Next()
 }
 
 func main() {
 	r := gin.Default()
+
+	r.Use(logPayload)
 
 	// Define the /ping route
 	r.GET("/ping", func(c *gin.Context) {
@@ -28,12 +62,12 @@ func main() {
 			"message": "pong",
 		})
 	})
+
 	r.GET("/_apis/artifactcache/cache", func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 		keys := c.Query("keys")
 		version := c.Query("version")
-		cacheFile := cacheFilename(keys, version)
-		fmt.Println(string(keys))
+		cacheFile := encodePayloadId(keys, version)
 		//fileInfo, err := os.Stat("/data/" + cacheFile)
 		_, err := os.Stat("/data/" + cacheFile)
 		if err == nil {
@@ -65,8 +99,6 @@ func main() {
 			"queryParams":   queryParams,
 			"postData":      string(postData),
 		}
-		payloadJson, _ := json.Marshal(payload)
-		fmt.Println(string(payloadJson))
 		c.JSON(404, payload)
 	})
 
