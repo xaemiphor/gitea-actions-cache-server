@@ -31,7 +31,7 @@ func decodePayloadId(source string) string {
 	return string(data)
 }
 
-func logPayload(c *gin.Context) {
+func middlewareLogPayload(c *gin.Context) {
 	// Extract request information
 	requestURI := c.Request.RequestURI
 	requestMethod := c.Request.Method
@@ -56,7 +56,7 @@ func logPayload(c *gin.Context) {
 func main() {
 	r := gin.Default()
 
-	r.Use(logPayload)
+	r.Use(middlewareLogPayload)
 
 	// Define the /ping route
 	r.GET("/ping", func(c *gin.Context) {
