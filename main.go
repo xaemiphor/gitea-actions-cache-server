@@ -31,6 +31,12 @@ func decodePayloadId(source string) string {
 	return string(data)
 }
 
+func createEmptyFile(target string) (bool, error) {
+	myfile, e := os.Create("/data/" + target)
+	myfile.Close()
+	return (e != nil), e
+}
+
 func middlewareLogPayload(c *gin.Context) {
 	// Extract request information
 	requestURI := c.Request.RequestURI
@@ -104,14 +110,14 @@ func main() {
 			return
 		}
 		cacheFile := encodePayloadId(key, version)
-		f, err := os.Create("/data/" + cacheFile)
+		success, err := createEmptyFile(cacheFile)
 		if err != nil {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
-		} else {
-			// Close the file when done
-			defer f.Close()
+		} else if success {
 			c.Writer.WriteHeader(200)
+		} else {
+			c.Writer.WriteHeader(400)
 		}
 	})
 
