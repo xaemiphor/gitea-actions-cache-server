@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"log"
+	"net/http"
 	"os"
 )
 
@@ -65,9 +67,9 @@ func main() {
 
 	r.GET("/_apis/artifactcache/cache", func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		keys := c.Query("keys")
+		key := c.Query("keys")
 		version := c.Query("version")
-		cacheFile := encodePayloadId(keys, version)
+		cacheFile := encodePayloadId(key, version)
 		//fileInfo, err := os.Stat("/data/" + cacheFile)
 		_, err := os.Stat("/data/" + cacheFile)
 		if err == nil {
@@ -80,6 +82,36 @@ func main() {
 			c.Writer.WriteHeader(204) // Not found
 		} else {
 			c.Writer.WriteHeader(400) // Neither found nor not found
+		}
+	})
+
+	r.POST("/_apis/artifactcache/caches", func(c *gin.Context) {
+		var jsonData map[string]interface{}
+		// Parse the JSON data from the request body
+		if err := json.NewDecoder(c.Request.Body).Decode(&jsonData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			return
+		}
+
+		key, ok := jsonData["key"].(string)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			return
+		}
+		version, ok := jsonData["version"].(string)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			return
+		}
+		cacheFile := encodePayloadId(key, version)
+		f, err := os.Create("/data/" + cacheFile)
+		if err != nil {
+			log.Fatal("Error creating file:", err)
+			c.Writer.WriteHeader(400)
+		} else {
+			// Close the file when done
+			defer f.Close()
+			c.Writer.WriteHeader(200)
 		}
 	})
 
