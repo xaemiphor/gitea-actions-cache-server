@@ -33,7 +33,7 @@ func decodePayloadId(source string) string {
 }
 
 func createEmptyFile(target string) (bool, error) {
-	fmt.Println("Attempting /data/"+target)
+	fmt.Println("Attempting /data/" + target)
 	myfile, e := os.Create("/data/" + target)
 	myfile.Close()
 	return (e == nil), e
@@ -56,7 +56,7 @@ func middlewareLogPayload(c *gin.Context) {
 		"requestMethod": requestMethod,
 		"headerData":    headerData,
 		"queryParams":   queryParams,
-		"jsonData": jsonData,
+		"jsonData":      jsonData,
 	}
 	payloadJson, _ := json.Marshal(payload)
 	fmt.Println(string(payloadJson))
