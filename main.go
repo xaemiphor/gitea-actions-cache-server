@@ -47,7 +47,7 @@ func middlewareLogPayload(c *gin.Context) {
 	headerData := c.Request.Header
 	queryParams := c.Request.URL.Query()
 	if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
-		fmt.Println("?")
+		fmt.Println("middlewareLogPayload - Couldn't bind to payload")
 	}
 
 	// Construct JSON payload
@@ -77,16 +77,19 @@ func main() {
 	})
 
 	r.GET("/_apis/artifactcache/cache", func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
+		scheme := "http"
+		if c.Request.TLS != nil {
+			scheme = "https"
+		}
+		origin := c.Request.Host + c.Request.URL.Host
 		key := c.Query("keys")
 		version := c.Query("version")
 		cacheFile := encodePayloadId(key, version)
-		//fileInfo, err := os.Stat("/data/" + cacheFile)
-		_, err := os.Stat("/data/" + cacheFile)
+		_, err := os.Stat("/data/" + cacheFile) // TODO Use the returned fileInfo to determine if cache should be cleaned, etc
 		if err == nil {
 			// Found
 			c.JSON(200, gin.H{
-				"archiveLocation": origin + "/download/" + cacheFile,
+				"archiveLocation": scheme + "://" + origin + "/download/" + cacheFile,
 				"cacheKey":        cacheFile,
 			})
 		} else if errors.Is(err, os.ErrNotExist) {
@@ -99,7 +102,7 @@ func main() {
 	r.POST("/_apis/artifactcache/caches", func(c *gin.Context) {
 		var jsonData map[string]interface{}
 		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
-			fmt.Println("?")
+			fmt.Println("r.POST - couldn't bind with payload")
 		}
 
 		key, ok := jsonData["key"].(string)
@@ -116,8 +119,6 @@ func main() {
 		}
 		cacheFile := encodePayloadId(key, version)
 		success, err := createEmptyFile(cacheFile)
-		fmt.Println(err)
-		fmt.Println(success)
 		if err != nil {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
