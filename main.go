@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"log"
 	"net/http"
 	"os"
@@ -32,18 +33,22 @@ func decodePayloadId(source string) string {
 }
 
 func createEmptyFile(target string) (bool, error) {
+	fmt.Println("Attempting /data/"+target)
 	myfile, e := os.Create("/data/" + target)
 	myfile.Close()
-	return (e != nil), e
+	return (e == nil), e
 }
 
 func middlewareLogPayload(c *gin.Context) {
+	var jsonData map[string]interface{}
 	// Extract request information
 	requestURI := c.Request.RequestURI
 	requestMethod := c.Request.Method
 	headerData := c.Request.Header
 	queryParams := c.Request.URL.Query()
-	postData, _ := c.GetRawData() // Assumes POST data is JSON
+	if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
+		fmt.Println("?")
+	}
 
 	// Construct JSON payload
 	payload := gin.H{
@@ -51,7 +56,7 @@ func middlewareLogPayload(c *gin.Context) {
 		"requestMethod": requestMethod,
 		"headerData":    headerData,
 		"queryParams":   queryParams,
-		"postData":      string(postData),
+		"jsonData": jsonData,
 	}
 	payloadJson, _ := json.Marshal(payload)
 	fmt.Println(string(payloadJson))
@@ -93,24 +98,26 @@ func main() {
 
 	r.POST("/_apis/artifactcache/caches", func(c *gin.Context) {
 		var jsonData map[string]interface{}
-		// Parse the JSON data from the request body
-		if err := json.NewDecoder(c.Request.Body).Decode(&jsonData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
-			return
+		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
+			fmt.Println("?")
 		}
 
 		key, ok := jsonData["key"].(string)
 		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			fmt.Println(http.StatusBadRequest, gin.H{"error": "Invalid key value"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid key value"})
 			return
 		}
 		version, ok := jsonData["version"].(string)
 		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+			fmt.Println(http.StatusBadRequest, gin.H{"error": "Invalid version value"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid version value"})
 			return
 		}
 		cacheFile := encodePayloadId(key, version)
 		success, err := createEmptyFile(cacheFile)
+		fmt.Println(err)
+		fmt.Println(success)
 		if err != nil {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
