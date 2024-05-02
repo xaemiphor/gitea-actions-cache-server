@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
 	"log"
 	"net/http"
 	"os"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 func getEnv(key, fallback string) string {
@@ -24,12 +26,13 @@ func encodePayloadId(key string, version string) string {
 	return base32.StdEncoding.EncodeToString(payload)
 }
 
-func decodePayloadId(source string) string {
+func decodePayloadId(source string) (string, string) {
 	data, err := base32.StdEncoding.DecodeString(source)
 	if err != nil {
 		fmt.Println("error:", err)
 	}
-	return string(data)
+	payload := strings.Split(string(data), "|")
+	return payload[0], payload[1]
 }
 
 func createEmptyFile(target string) (bool, error) {
@@ -76,6 +79,7 @@ func main() {
 		})
 	})
 
+	// Checks if payload exists, return download URL if avail
 	r.GET("/_apis/artifactcache/cache", func(c *gin.Context) {
 		scheme := "http"
 		if c.Request.TLS != nil {
@@ -99,6 +103,7 @@ func main() {
 		}
 	})
 
+	// Reserves the payload
 	r.POST("/_apis/artifactcache/caches", func(c *gin.Context) {
 		var jsonData map[string]interface{}
 		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
@@ -123,11 +128,16 @@ func main() {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
 		} else if success {
-			c.Writer.WriteHeader(200)
+			c.JSON(200, gin.H{
+				"cacheId": cacheFile,
+			})
 		} else {
 			c.Writer.WriteHeader(400)
 		}
 	})
+
+	// Provides the payload
+	r.Static("/download", "/data") // TODO Expirey of payloads
 
 	r.NoRoute(func(c *gin.Context) {
 		// Extract request information
