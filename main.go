@@ -111,8 +111,9 @@ func main() {
 		if err == nil {
 			// Found
 			c.JSON(200, gin.H{
-				"archiveLocation": scheme + "://" + origin + "/download/" + cacheFile,
 				"cacheKey":        cacheFile,
+				"archiveLocation": scheme + "://" + origin + "/download/" + cacheFile,
+				"result":          "hit",
 			})
 			return
 		} else if errors.Is(err, os.ErrNotExist) {
