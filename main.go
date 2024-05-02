@@ -99,7 +99,7 @@ func main() {
 			scheme = "https"
 		}
 		origin := c.Request.Host + c.Request.URL.Host
-		key := c.Query("keys")
+		key := c.Query("keys") // TODO This is a list, not handled great here
 		version := c.Query("version")
 		cacheFile := encodePayloadId(key, version)
 		_, err := os.Stat("/data/" + cacheFile) // TODO Use the returned fileInfo to determine if cache should be cleaned, etc
@@ -186,6 +186,7 @@ func main() {
 		fileInfo, _ := os.Stat("/data/" + cacheFile + ".inprogress")
 		fileSize := fileInfo.Size()
 
+		fmt.Println("Filesize: " + string(fileSize) + ", Payloadsize: " + string(payloadSize))
 		if fileSize == payloadSize {
 			e := os.Rename("/data/"+cacheFile+".inprogress", "/data/"+cacheFile)
 			if e != nil {
