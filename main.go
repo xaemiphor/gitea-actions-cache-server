@@ -186,7 +186,7 @@ func main() {
 		fileInfo, _ := os.Stat("/data/" + cacheFile + ".inprogress")
 		fileSize := fileInfo.Size()
 
-		fmt.Println("Filesize: " + string(fileSize) + ", Payloadsize: " + string(payloadSize))
+		fmt.Println("Filesize: " + strconv.FormatInt(fileSize, 10) + ", Payloadsize: " + strconv.FormatInt(payloadSize, 10))
 		if fileSize == payloadSize {
 			e := os.Rename("/data/"+cacheFile+".inprogress", "/data/"+cacheFile)
 			if e != nil {
