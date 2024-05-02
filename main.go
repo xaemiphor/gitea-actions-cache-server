@@ -144,6 +144,12 @@ func main() {
 			return
 		}
 		cacheFile := encodePayloadId(key, version)
+		_, err := os.Stat("/data/" + cacheFile)
+		if err == nil {
+			// File exists
+			c.Writer.WriteHeader(400)
+			return
+		}
 		success, err := createEmptyFile(cacheFile + ".inprogress")
 		if err != nil {
 			log.Fatal("Error creating file:", err)
