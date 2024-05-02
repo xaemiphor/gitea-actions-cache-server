@@ -64,7 +64,9 @@ func middlewareLogPayload(c *gin.Context) {
 	requestMethod := c.Request.Method
 	headerData := c.Request.Header
 	queryParams := c.Request.URL.Query()
-	_ = c.ShouldBindBodyWith(&jsonData, binding.JSON)
+	if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
+		fmt.Println("middleware - couldn't bind with payload")
+	}
 
 	// Construct JSON payload
 	payload := gin.H{
@@ -109,10 +111,13 @@ func main() {
 				"archiveLocation": scheme + "://" + origin + "/download/" + cacheFile,
 				"cacheKey":        cacheFile,
 			})
+			return
 		} else if errors.Is(err, os.ErrNotExist) {
 			c.Writer.WriteHeader(204) // Not found
+			return
 		} else {
 			c.Writer.WriteHeader(400) // Neither found nor not found
+			return
 		}
 	})
 
@@ -140,12 +145,15 @@ func main() {
 		if err != nil {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
+			return
 		} else if success {
 			c.JSON(200, gin.H{
 				"cacheId": cacheFile,
 			})
+			return
 		} else {
 			c.Writer.WriteHeader(400)
+			return
 		}
 	})
 
@@ -177,25 +185,28 @@ func main() {
 		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
 			fmt.Println("r.POST - couldn't bind with payload")
 		}
-		payloadSize, ok := jsonData["size"].(int64)
-		if !ok {
-			fmt.Println(http.StatusBadRequest, gin.H{"error": "Invalid size value"})
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid size value"})
+		payloadSize := int(jsonData["size"].(float64))
+		fileInfo, err := os.Stat("/data/" + cacheFile + ".inprogress")
+		if err != nil {
+			fmt.Println("File not found " + cacheFile + ".inprogress")
+			c.Writer.WriteHeader(400)
 			return
 		}
-		fileInfo, _ := os.Stat("/data/" + cacheFile + ".inprogress")
-		fileSize := fileInfo.Size()
+		fileSize := int(fileInfo.Size())
 
-		fmt.Println("Filesize: " + strconv.FormatInt(fileSize, 10) + ", Payloadsize: " + strconv.FormatInt(payloadSize, 10))
+		fmt.Println("Filesize: " + strconv.Itoa(fileSize) + ", Payloadsize: " + strconv.Itoa(payloadSize))
 		if fileSize == payloadSize {
 			e := os.Rename("/data/"+cacheFile+".inprogress", "/data/"+cacheFile)
 			if e != nil {
 				log.Fatal(e)
 				c.Writer.WriteHeader(500)
+				return
 			}
 			c.Writer.WriteHeader(200)
+			return
 		}
 		c.Writer.WriteHeader(400)
+		return
 
 	})
 
