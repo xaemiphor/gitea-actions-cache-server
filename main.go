@@ -65,8 +65,10 @@ func middlewareLogPayload(c *gin.Context) {
 	requestMethod := c.Request.Method
 	headerData := c.Request.Header
 	queryParams := c.Request.URL.Query()
-	if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
-		fmt.Println("middleware - couldn't bind with payload")
+	if requestMethod == "POST" {
+		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
+			fmt.Println("middleware - couldn't bind with payload")
+		}
 	}
 
 	// Construct JSON payload
@@ -122,7 +124,7 @@ func main() {
 		}
 	})
 
-	// Reserves the payload
+	// Reserves the payload path
 	r.POST("/_apis/artifactcache/caches", func(c *gin.Context) {
 		var jsonData map[string]interface{}
 		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
@@ -174,7 +176,9 @@ func main() {
 			return
 		}
 
-		body, _ := io.ReadAll(c.Request.Body)
+		//body, _ := io.ReadAll(c.Request.Body)
+		body, _ := c.GetRawData()
+
 		addToFile("/data/"+cacheId+".inprogress", startByte, body)
 		c.Writer.WriteHeader(200)
 	})
