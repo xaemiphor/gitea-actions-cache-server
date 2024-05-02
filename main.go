@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base32"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,7 +39,6 @@ func decodePayloadId(source string) (string, string) {
 }
 
 func createEmptyFile(target string) (bool, error) {
-	fmt.Println("Attempting /data/" + target)
 	myfile, e := os.Create("/data/" + target)
 	myfile.Close()
 	return (e == nil), e
@@ -46,6 +46,7 @@ func createEmptyFile(target string) (bool, error) {
 
 // Credit to https://stackoverflow.com/a/53626880
 func addToFile(filepath string, startByte int, data []byte) {
+	fmt.Println("!! Writing " + strconv.Itoa(binary.Size(data)) + " to " + filepath)
 	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		panic("File not found")
