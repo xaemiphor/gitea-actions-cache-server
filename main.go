@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base32"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,17 +11,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 )
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
 
 func encodePayloadId(key string, version string) string {
 	payload := []byte(key + "|" + version)
@@ -46,7 +39,6 @@ func createEmptyFile(target string) (bool, error) {
 
 // Credit to https://stackoverflow.com/a/53626880
 func addToFile(filepath string, startByte int, data []byte) {
-	fmt.Println("!! Writing " + strconv.Itoa(binary.Size(data)) + " to " + filepath)
 	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		panic("File not found")
@@ -56,6 +48,31 @@ func addToFile(filepath string, startByte int, data []byte) {
 	f.Write(data)
 	f.Sync() //flush to disk
 	f.Close()
+}
+
+func doesFileExist(filepath string) (bool, os.FileInfo, error) {
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		return false, fileInfo, err
+	}
+	fileSize := int(fileInfo.Size())
+	fileDate := fileInfo.ModTime()
+	fileAge := time.Since(fileDate)
+	if fileSize == 0 || fileAge.Hours() > (24*7) {
+		if err := os.Remove(filepath); err != nil {
+			log.Fatal(err)
+		}
+		return false, nil, err
+	} else {
+		return true, fileInfo, err
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }
 
 func middlewareLogPayload(c *gin.Context) {
@@ -107,9 +124,9 @@ func main() {
 		key := c.Query("keys") // TODO This is a list, not handled great here
 		version := c.Query("version")
 		cacheFile := encodePayloadId(key, version)
-		_, err := os.Stat("/data/" + cacheFile) // TODO Use the returned fileInfo to determine if cache should be cleaned, etc
-		if err == nil {
-			// Found
+		fileExist, _, err := doesFileExist("/data/" + cacheFile)
+		if fileExist {
+			// File exists
 			c.JSON(200, gin.H{
 				"cacheKey":        cacheFile,
 				"archiveLocation": scheme + "://" + origin + "/download/" + cacheFile,
@@ -117,10 +134,12 @@ func main() {
 			})
 			return
 		} else if errors.Is(err, os.ErrNotExist) {
-			c.Writer.WriteHeader(204) // Not found
+			// File doesn't exist and returned an error
+			c.Writer.WriteHeader(400)
 			return
 		} else {
-			c.Writer.WriteHeader(400) // Neither found nor not found
+			// File doesn't exist, no error
+			c.Writer.WriteHeader(204)
 			return
 		}
 	})
@@ -145,8 +164,8 @@ func main() {
 			return
 		}
 		cacheFile := encodePayloadId(key, version)
-		_, err := os.Stat("/data/" + cacheFile)
-		if err == nil {
+		fileExist, _, _ := doesFileExist("/data/" + cacheFile)
+		if fileExist {
 			// File exists
 			c.Writer.WriteHeader(400)
 			return
@@ -183,7 +202,6 @@ func main() {
 			return
 		}
 
-		//body, _ := io.ReadAll(c.Request.Body)
 		body, _ := c.GetRawData()
 
 		addToFile("/data/"+cacheId+".inprogress", startByte, body)
@@ -206,7 +224,6 @@ func main() {
 		}
 		fileSize := int(fileInfo.Size())
 
-		fmt.Println("Filesize: " + strconv.Itoa(fileSize) + ", Payloadsize: " + strconv.Itoa(payloadSize))
 		if fileSize == payloadSize {
 			e := os.Rename("/data/"+cacheFile+".inprogress", "/data/"+cacheFile)
 			if e != nil {
