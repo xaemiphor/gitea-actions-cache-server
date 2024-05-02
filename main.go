@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -42,6 +44,19 @@ func createEmptyFile(target string) (bool, error) {
 	return (e == nil), e
 }
 
+// Credit to https://stackoverflow.com/a/53626880
+func addToFile(filepath string, startByte int, data []byte) {
+	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		panic("File not found")
+	}
+	whence := io.SeekStart
+	_, err = f.Seek(int64(startByte), whence)
+	f.Write(data)
+	f.Sync() //flush to disk
+	f.Close()
+}
+
 func middlewareLogPayload(c *gin.Context) {
 	var jsonData map[string]interface{}
 	// Extract request information
@@ -49,9 +64,7 @@ func middlewareLogPayload(c *gin.Context) {
 	requestMethod := c.Request.Method
 	headerData := c.Request.Header
 	queryParams := c.Request.URL.Query()
-	if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
-		fmt.Println("middlewareLogPayload - Couldn't bind to payload")
-	}
+	_ = c.ShouldBindBodyWith(&jsonData, binding.JSON)
 
 	// Construct JSON payload
 	payload := gin.H{
@@ -123,7 +136,7 @@ func main() {
 			return
 		}
 		cacheFile := encodePayloadId(key, version)
-		success, err := createEmptyFile(cacheFile)
+		success, err := createEmptyFile(cacheFile + ".inprogress")
 		if err != nil {
 			log.Fatal("Error creating file:", err)
 			c.Writer.WriteHeader(400)
@@ -134,6 +147,55 @@ func main() {
 		} else {
 			c.Writer.WriteHeader(400)
 		}
+	})
+
+	// Receive and write payload
+	r.PATCH("/_apis/artifactcache/caches/:cacheId", func(c *gin.Context) {
+		cacheId := c.Param("cacheId")
+		//key, version := decodePayloadId(cacheId)
+		contentRange := c.GetHeader("Content-Range")
+		// TODO There has to be a better way to parse the contentRange
+		rangeSplit := strings.Split(string(contentRange), "/")
+		rangeSplit = strings.Split(string(rangeSplit[0]), " ")
+		rangeSplit = strings.Split(string(rangeSplit[1]), "-")
+		startByte, _ := strconv.Atoi(rangeSplit[0])
+		if c.GetHeader("Content-Type") != "application/octet-stream" {
+			err := fmt.Errorf("required octet-stream")
+			c.AbortWithStatusJSON(400, map[string]string{"message": err.Error()})
+			return
+		}
+
+		body, _ := io.ReadAll(c.Request.Body)
+		addToFile("/data/"+cacheId+".inprogress", startByte, body)
+		c.Writer.WriteHeader(200)
+	})
+
+	// Upload complete
+	r.POST("/_apis/artifactcache/caches/:cacheId", func(c *gin.Context) {
+		cacheFile := c.Param("cacheId")
+		var jsonData map[string]interface{}
+		if err := c.ShouldBindBodyWith(&jsonData, binding.JSON); err != nil {
+			fmt.Println("r.POST - couldn't bind with payload")
+		}
+		payloadSize, ok := jsonData["size"].(int64)
+		if !ok {
+			fmt.Println(http.StatusBadRequest, gin.H{"error": "Invalid size value"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid size value"})
+			return
+		}
+		fileInfo, _ := os.Stat("/data/" + cacheFile + ".inprogress")
+		fileSize := fileInfo.Size()
+
+		if fileSize == payloadSize {
+			e := os.Rename("/data/"+cacheFile+".inprogress", "/data/"+cacheFile)
+			if e != nil {
+				log.Fatal(e)
+				c.Writer.WriteHeader(500)
+			}
+			c.Writer.WriteHeader(200)
+		}
+		c.Writer.WriteHeader(400)
+
 	})
 
 	// Provides the payload
